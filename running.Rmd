@@ -1,0 +1,124 @@
+---
+title: "Processing Garmin Split Data"
+output: html_notebook
+---
+
+Garmin split CSV downloads are used to investigate changes in speed across workouts. Looking for improvements to average 100 meter time.
+
+Garmin Connect application tracks activities by activity type.  Activity types include run, bike, cardio, strength.  A workout can be created for an activity type.  The workout comprises a set of steps.  Each step has a time.  For example, a run can contain steps of type warmup, run, recover, cool down.  Step can be defined by time and distance.  A workout is available for execution.  The data for each workout is captured.  Garmin provides a splits CSV for an executed and recorded instance of a workout.  The splits capture the statistics of each step. It is the splits CSV for defined workouts that are processed here.  Specifically, the workouts are run activities.  The workout definitions vary, but generally the steps are warmup, sets of run and recover, and cool down.  Investigated here are changes in run speeds through time as the workouts are executed.  Am I getting faster or slower?
+
+The data model Garmin uses for the exports has some deficiencies that have to be worked around. First is that the activity types cannot be subtyped.  I can filter by run, but I can't filter on workouts within a run type.  This can be satisfactorily worked around by a naming convention for workouts: Prefix the name of a workout by "workout".  Garmin provides an activity search, so searching on the prefix finds what I want.
+
+Second is that the date of the activity is not part of the downloaded data.  Ideally, the CSV would include step date as a column.  Alternatively, the activity start date would be part of the automatic naming of the exported CSV, making it available for parsing.  I set the activity date in the name manually when I save the downloaded file.  A nuisance, but workable.
+
+Most egregiously, there is no step type column in the CSV.  Without that, I infer interest based on some other column.  In this exploration, I use a step's average 100 meter per second rate to filter out anything over 30 seconds (see why I am interested in improving?).
+
+I have two goals for this exercise.  First is to be able to see changes in speed through time.  Second is to beat off R rust.  Third is to stay in tune with Tidyverse, which adds to the beauty of R.
+
+I have (technically) unnessarily prefixed functions with package name.  Though the script doesn't care, the prefix reminds me of where the functions are coming from.
+
+```{r}
+library(tidyverse, quietly=TRUE)
+library(lubridate, quietly=TRUE)
+library(knitr, quietly=TRUE)
+library(DT, quietly=TRUE)
+
+```
+
+## Select and combine files to create untidy dataset
+
+
+```{r message=FALSE}
+sourcefiles <- choose.files()
+
+untidy <- 
+  sourcefiles %>% 
+  purrr::set_names(nm=basename(.)) %>%
+  purrr::map_dfr(readr::read_csv, 
+                 .id="source", 
+                 col_types=cols(Time=col_character(),
+                                'Cumulative Time'=col_character(),
+                                'Moving Time'=col_character()
+                                )
+                 )
+
+```
+
+<div style="background-color:#edddd4; margin:10px">
+<details>
+<summary>Explanation of the code.</summary>
+The function choose.files returns a list of file names selected by the user.  The file names are used to read in and stitch together the chosed files.  The assumption is that the files are all of the same shape as defined by Garmin for the splits export.  We optimistically assume the path is always happy.
+### The vector of full source file names chosen by the user
+```{r}
+  sourcefiles
+```
+
+### The vector's basename values to be used to create a new column in the data
+```{r}
+  sourcefiles %>% basename()
+```
+Note the %>%.  This is a pipe operator from the magrittr package, part of the tidyverse.  The package offers a set of operators that make code more readable.  In this case, sourcefiles (the vector of file names chosen by the user) is piped as the first argument into the function basename.  The results of basename are available to feed forward to another function, depicting a pipeline of processing.
+
+### The vector's basename values added to create a named vector.
+```{r}
+  sourcefiles %>% purrr::set_names(nm=basename(.))
+```
+The function purrr::set_names adds names to the vector from sourcefiles (the strings representing the selected files).  The names added to the vector are those returned by basename, which reuses the argument piped to set_names (depicted by ".").  
+
+### The entire pipeline that creates the untidy data
+```{r eval=FALSE}
+untidy <- 
+  sourcefiles %>% 
+  purrr::set_names(nm=basename(.)) %>%
+  purrr::map_dfr(readr::read_csv, 
+                 .id="source", 
+                 col_types=cols(Time=col_character(),
+                                'Cumulative Time'=col_character(),
+                                'Moving Time'=col_character()
+                                )
+                 )
+```
+
+The items of the named vector are mapped to the read_csv function.  A new column named "source" is added to the data frame as the process executes.  Since the input is a named vector, the values for the new column are taken from the vector's names.  The full file name is used to identify the file to read_csv.  
+
+The mapping function adds the col_types stanza as an argument to the read_csv function.  The stanza tells read_csv to handle specific CSV columns in a specific manner.  Named columns are set to be treated as plain text rather than inferring their type from data and transforming the values as they are read.  
+</details>
+</div>
+
+### Untidy data
+```{r results='asis'}
+datatable(untidy)
+```
+
+
+## Tidy the data and derive new columns
+
+```{r}
+tidied <- untidy[untidy$Laps != "Summary", ]
+
+tidied$Seconds <- lubridate::period_to_seconds(ms(tidied$Time) )
+
+tidied$Meters <- tidied$Distance * 1000.0
+
+tidied$dash100msecs <- round(tidied$Seconds / tidied$Meters * 100, 1)
+
+interesting <- tidied %>% select(source, Laps, Distance, Time, Meters, Seconds, dash100msecs)
+```
+New columns are derived from the input and added to the data frame. The interesting bits are pulled out.
+
+## Display tidy data
+
+```{r results='asis'}
+min(interesting$dash100msecs)
+
+datatable(interesting)
+```
+
+## Plot distribution of times
+```{r}
+p <- ggplot(tidied[tidied$dash100msecs < 30, ], 
+            aes(source, dash100msecs, label=dash100msecs))
+p + geom_label(nudge_x = 0.2) + 
+    geom_point(aes(colour = factor(Meters)))
+```
+
