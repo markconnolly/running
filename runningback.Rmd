@@ -1,0 +1,85 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code.
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+```{r}
+require(tidyr)
+require(readr)
+require(magrittr)
+require(dplyr)
+require(purrr)
+```
+
+## Select and combine files to create untidy dataset
+
+
+```{r message=FALSE}
+sourcefiles <- choose.files()
+
+stitched <- sourcefiles %>% 
+            purrr::set_names(nm=basename(.)) %>%
+            purrr::map_dfr(readr::read_csv, 
+                           .id="source", 
+                           col_types=cols(Time=col_character(),
+                                          'Cumulative Time'=col_character(),
+                                          'Moving Time'=col_character()
+                                          ))
+
+```
+
+
+## Explain what is going on in the code
+
+The function purrr::set_names adds names to the vector from sourcefiles (the strings representing the selected files).  The names are set to the basename -- the selected file with the path information stripped off.  
+
+The vector of full source file names.
+```{r}
+  sourcefiles
+```
+
+The vector's basename values.
+```{r}
+  sourcefiles %>% basename()
+```
+
+The vector's basename values added to create a named vector.
+```{r}
+  sourcefiles %>% purrr::set_names(nm=basename(.))
+```
+
+The structure of the result.
+```{r}
+  sourcefiles %>% purrr::set_names(nm=basename(.)) %>% str()
+```
+
+
+## Tidy data and derive new columns
+
+```{r}
+require(knitr)
+require(DT)
+
+stitched <- stitched[stitched$Laps != "Summary", ]
+
+stitched$Seconds <- period_to_seconds(ms(stitched$Time) )
+
+stitched$Meters <- stitched$Distance * 1000.0
+
+stitched$dash100msecs <- stitched$Seconds / stitched$Meters * 100
+
+stitched <- stitched %>% select(source, Laps, Distance, Time, Meters, Seconds, dash100msecs)
+```
+
+## Display tidy data
+
+```{r results='asis'}
+min(stitched$dash100msecs)
+
+datatable(stitched)
+```
+
