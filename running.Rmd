@@ -47,7 +47,7 @@ untidy <-
 <div style="background-color:#edddd4; margin:10px">
 <details>
 <summary>Explanation of the code.</summary>
-The function choose.files returns a list of file names selected by the user.  The file names are used to read in and stitch together the chosed files.  The assumption is that the files are all of the same shape as defined by Garmin for the splits export.  We optimistically assume the path is always happy.
+The function choose.files returns a list of file names selected by the user.  The file names are used to read in and stitch together the chosen files.  The assumption is that the files are all of the same shape as defined by Garmin for the splits export.  We optimistically assume the path is always happy.
 ### The vector of full source file names chosen by the user
 ```{r}
   sourcefiles
@@ -87,7 +87,7 @@ The mapping function adds the col_types stanza as an argument to the read_csv fu
 
 ### Untidy data
 ```{r results='asis'}
-datatable(untidy)
+DT::datatable(untidy)
 ```
 
 
@@ -102,7 +102,7 @@ tidied$Meters <- tidied$Distance * 1000.0
 
 tidied$dash100msecs <- round(tidied$Seconds / tidied$Meters * 100, 1)
 
-interesting <- tidied %>% select(source, Laps, Distance, Time, Meters, Seconds, dash100msecs)
+interesting <- tidied %>% dplyr::select(source, Laps, Distance, Time, Meters, Seconds, dash100msecs)
 ```
 New columns are derived from the input and added to the data frame. The interesting bits are pulled out.
 
@@ -111,7 +111,7 @@ New columns are derived from the input and added to the data frame. The interest
 ```{r results='asis'}
 min(interesting$dash100msecs)
 
-datatable(interesting)
+DT::datatable(interesting)
 ```
 
 ## Plot distribution of times
